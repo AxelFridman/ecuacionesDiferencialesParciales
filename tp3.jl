@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.11
+# v0.19.18
 
 using Markdown
 using InteractiveUtils
@@ -221,14 +221,19 @@ function generarMatricesImplicitaExplicita(alphaDifusividad, xsp, tsp)
 	deltaT = tsp[2]-tsp[1]
 	r = alphaDifusividad * deltaT / (2* h^2)
 	
-	implMedio = (2*r +1)*ones(length(tsp))
-	implAbajo = -r*ones(length(tsp)-1)
-
-	explMedio = (-2*r +1)*ones(length(tsp))
-	explAbajo = r*ones(length(tsp)-1)
+	implMedio = (2*r +1)*ones(length(xsp))
+	implAbajo = -r*ones(length(xsp)-1)
+	implArriba = -r*ones(length(xsp)-1)
+	implAbajo[end] =-2*r
+	implArriba[1] = -2*r
 	
-	Aimpl = Tridiagonal(implAbajo ,implMedio , implAbajo )
-	Aexpl = Tridiagonal(explAbajo ,explMedio , explAbajo )
+	explMedio = (-2*r +1)*ones(length(xsp))
+	explAbajo = r*ones(length(xsp)-1)
+	explArriba = r*ones(length(xsp)-1)
+	explAbajo[end] =2*r
+	explArriba[1] = 2*r
+	Aimpl = Tridiagonal(implAbajo ,implMedio , implArriba )
+	Aexpl = Tridiagonal(explAbajo ,explMedio , explArriba )
 
 	return(Aimpl, Aexpl)
 end
@@ -258,15 +263,20 @@ $u_{0,j}=u_{2,j},\quad u_{n+1,j} = u_{n-1,j},\quad u_{i,0}=u_{i,2},\quad u_{i,n+
 # ╔═╡ 0f804239-f65b-44e9-a092-2c276569e0ca
 function resolverSistema(xspan, tspan, alphau, alphav, u0Mat, v0Mat, F, G)
 	matricesADIu = generarMatricesImplicitaExplicita(alphau, xspan, tspan)
-	#OJO ACA ESTOY TOMANDO DE COEFICIENTE DE DIFUSIVIDAD A ALPHAU solamente
 	AIu = matricesADIu[1]
+	invAIu = inv(AIu)
 	AEu = matricesADIu[2]
 	
 	matricesADIv = generarMatricesImplicitaExplicita(alphav, xspan, tspan)
-	#OJO ACA ESTOY TOMANDO DE COEFICIENTE DE DIFUSIVIDAD A ALPHAV solamente
 	AIv = matricesADIv[1]
+	invAIv = inv(AIv)
 	AEv = matricesADIv[2]
-	
+
+	transAEu = transpose(AEu)
+	transAEv = transpose(AEu)
+	transInvAIu = transpose(invAIu)
+	transInvAIv = transpose(invAIv)
+		
 	h = xspan[2]-xspan[1]
 	deltaT = tspan[2]-tspan[1]
 	u = u0Mat
@@ -274,22 +284,11 @@ function resolverSistema(xspan, tspan, alphau, alphav, u0Mat, v0Mat, F, G)
 	us = [u]
 	vs = [v]
 	for i in tspan
-		#print("tamanio matriz AI")
-		#println(size(AI))
-		#print("tamanio matriz U sin borde")
-		#println(size(u[2:end-1, 2:end-1]))
-		#print("tamanio matriz F(U,V) sin borde ")
-		#println(size(F(u,v)[2:end-1, 2:end-1]))
-		#print("tamanio matriz AE transpose")
-		#println(size(transpose(AE)))
-		#print("Coso de la derecha ")
-		#println(size((u[2:end-1, 2:end-1] * transpose(AE) )))
-		#print("Coso de la derecha derecha ")
-		#println(size(deltaT/2 .* F(u,v)[2:end-1, 2:end-1]))"
-		uAsterisco = AIu \ (u * transpose(AEu) + deltaT/2 .* F(u,v))
-		vAsterisco = AIv \ (v * transpose(AEv) + deltaT/2 .* G(u,v))
-		u = (AEu * uAsterisco + deltaT/2 * F(uAsterisco,vAsterisco)) / transpose(AIu) #OJO CON ESE TRANSPOSEN DE AI QUE CREO QUE HAY QUE MULTIPLICAR POR INVERSA.
-		v = (AEv * vAsterisco + deltaT/2 * G(uAsterisco,vAsterisco)) / transpose(AIv)
+
+		uAsterisco = invAIu * (u * transAEu + deltaT/2 * F.(u,v))
+		vAsterisco = invAIu * (v * transAEv + deltaT/2 * G.(u,v))
+		u = (AEu * uAsterisco + deltaT/2 * F.(uAsterisco,vAsterisco)) * transInvAIu
+		v = (AEv * vAsterisco + deltaT/2 * G.(uAsterisco,vAsterisco)) * transInvAIv
 
 		push!(us, u)
 		push!(vs, v)
@@ -299,8 +298,8 @@ end
 
 # ╔═╡ db1e672b-6246-4739-939d-ed990aa22385
 begin
-xsp = 0:0.01:1
-tsp = 0:0.01:1
+xsp = 0:0.1:1
+tsp = 0:0.1:80
 alphaU = 0.01
 alphaV = 0.01
 
@@ -309,16 +308,19 @@ F(u,v) = u/5 - v/10
 G(u,v) = (u + v)/2
 	
 funIni(x,y) = sin(x)/(1/10 * y^2+ 1) + sin(y+2*x) * sin(5*y)+(x-y)/50
-u0Mat = zeros(length(tsp),length(tsp))
-v0Mat = zeros(length(tsp),length(tsp))
+u0Mat = zeros(length(xsp),length(xsp))
+v0Mat = zeros(length(xsp),length(xsp))
 
-	for i in 1:length(tsp)
-		for j in 1:length(tsp)
-			u0Mat[i,j] = funIni(tsp[i],tsp[j])
-			v0Mat[i,j] = funIni(tsp[i]/2 + 0.1,tsp[j]*3)
+	for i in 1:length(xsp)
+		for j in 1:length(xsp)
+			u0Mat[i,j] = funIni(xsp[i],xsp[j])
+			v0Mat[i,j] = funIni(xsp[i]/2 + 0.1,xsp[j]*3)
 		end
 	end
 end
+
+# ╔═╡ 2ceaa183-dce5-46ff-80c5-c3764d436f66
+ejeMatIm = generarMatricesImplicitaExplicita(1, xsp, tsp)[1]
 
 # ╔═╡ 0a8b2472-94ac-44da-b8ce-968e127e788a
 md"""
@@ -336,35 +338,26 @@ begin
 	plot(heatmap(u0Mat, clim=(minimum(u0Mat),maximum(u0Mat))))
 end
 
-# ╔═╡ 5af41093-ed73-406f-9ab7-a8b6213c0e0a
-# ╠═╡ disabled = true
-#=╠═╡
-begin #PARA TESTEAR
-uss = []
-u = u0Mat
-	for i in 1:1000
-		u = 0.999 .* u
-		push!(uss,u)
-	end
-end
-  ╠═╡ =#
-
 # ╔═╡ f46503c2-5eef-4292-8078-3e546e7e22d3
-function graficarHeatMap(us, K)
+function graficarHeatMapEscalaFija(us, K)
 	mins = minimum(us[1])
 	maxs = maximum(us[1])
 	anim = @gif for i in 1:K:size(us)[1]
 		u = us[i]
-		plot(heatmap(u, clim=(mins,maxs)))
+		plot(heatmap(u, clim=(mins,maxs))) #
 	end
 	return anim
 end
 
-# ╔═╡ b369f574-b4ae-4799-8a85-011b9f40c5ff
-begin
-	res = resolverSistema(xsp, tsp, alphaU, alphaV, u0Mat/10, v0Mat, F, G)
-	us = res[1]
-	g = graficarHeatMap(us, 1)
+# ╔═╡ 92cc38ea-a92b-47fd-b85e-012f3e54509b
+function graficarHeatMapEscalaMovil(us, K)
+	mins = minimum(us[1])
+	maxs = maximum(us[1])
+	anim = @gif for i in 1:K:size(us)[1]
+		u = us[i]
+		plot(heatmap(u)) #
+	end
+	return anim
 end
 
 # ╔═╡ ae5afcc5-ac2b-43de-8af9-4319a897d3ec
@@ -382,14 +375,14 @@ Resolver también para $k=-0.005$ y comparar la estructura de los patrones. ¿Se
 # ╔═╡ 85665992-b71f-451b-b56e-5fb8562fa9e4
 begin
 	K = -0.05
-	Ffitz(u,v) = u .- (u^3) .- v .+ K
-	Gfitz(u,v) = u .- v
+	Ffitz(u,v) = u - (u^3) - v + K
+	Gfitz(u,v) = u - v
 	alphaUfitz = 2.8*10^-4
 	alphaVfitz = 5*10^-3
 	xspFitz = 0:0.01:1
-	tspFitz = 0:0.01:1
-	u0Fitz = rand(Uniform(0,1), length(tspFitz),length(tspFitz))
-	v0Fitz = rand(Uniform(0,1), length(tspFitz),length(tspFitz))
+	tspFitz = 0:0.01:10
+	u0Fitz = rand(Uniform(0,1), length(xspFitz),length(xspFitz))
+	v0Fitz = rand(Uniform(0,1), length(xspFitz),length(xspFitz))
 end
 
 # ╔═╡ 09f5c38f-bc7a-4e75-b06e-1c50af9024aa
@@ -404,10 +397,7 @@ begin
 end
 
 # ╔═╡ 87aa9288-8c20-4e54-94db-fb0ed0707344
-graficarHeatMap(usFitz, 100)
-
-# ╔═╡ 6cd56eaa-8bc5-44d3-be1f-3a490b3b775c
-
+graficarHeatMapEscalaMovil(usFitz, 10)
 
 # ╔═╡ 55a5a1d8-e764-4fbc-a1b7-650dc0534a78
 md"""
@@ -445,7 +435,7 @@ begin
 	F6(u,v) = γ*(a .- b*u .+ u^2 * v)
 	G6(u,v) = γ*(c .- u^2 * v)
 	xsp6 = 0:0.01:1
-	tsp6 = 0:0.01:1
+	tsp6 = 0:0.01:30
 end
 
 # ╔═╡ fc113675-b6e1-4e64-a533-3ea04e82fef3
@@ -456,7 +446,31 @@ begin
 end
 
 # ╔═╡ 61adbd0f-a872-4286-aa99-d92a1f39a33d
-graficarHeatMap(us6, 1)
+graficarHeatMapEscalaMovil(us6, 1)
+
+# ╔═╡ b3a90d99-64ed-4e0c-93d0-a1f0dfa23d0d
+graficarHeatMapEscalaMovil(us6, 10)
+
+# ╔═╡ f6d53434-c099-4292-a9ea-84178edcc214
+begin
+	F7(u,v) = 0.5*(a .- b*u .+ u^2 * v)
+	G7(u,v) = 0.5*(c .- u^2 * v) #Ahora gamma es 0.5
+	xsp7  = 0:0.01:1
+	tsp7 = 0:0.01:30
+	u07= rand(Uniform(0,1), length(xsp7),length(xsp7))
+	v07 = copy(u07)#Nos preguntamos que pasaba si el reactivo 2 se enontraba igual que el 1
+end
+
+# ╔═╡ a1efe350-a5c9-46b7-9e2d-73b5b1972eb5
+begin
+	
+	res7 = resolverSistema(xsp7, tsp7, alphaU6, alphaV6,
+								u07, v07, F7, G7)
+	us7 = res7[1]
+end
+
+# ╔═╡ c3db6bd6-603e-4af0-8fda-5a53ffd79aab
+graficarHeatMapEscalaMovil(us7, 10)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -480,8 +494,9 @@ StatsBase = "~0.33.21"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.7.3"
+julia_version = "1.8.3"
 manifest_format = "2.0"
+project_hash = "5aad72552b5a85e409f7402941850d993ffbddef"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -497,6 +512,7 @@ version = "3.4.0"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
+version = "1.1.1"
 
 [[deps.ArnoldiMethod]]
 deps = ["LinearAlgebra", "Random", "StaticArrays"]
@@ -661,6 +677,7 @@ version = "4.2.0"
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
+version = "0.5.2+0"
 
 [[deps.ConstructionBase]]
 deps = ["LinearAlgebra"]
@@ -776,6 +793,7 @@ version = "0.9.1"
 [[deps.Downloads]]
 deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
+version = "1.6.0"
 
 [[deps.DualNumbers]]
 deps = ["Calculus", "NaNMath", "SpecialFunctions"]
@@ -928,9 +946,9 @@ version = "0.21.0+0"
 
 [[deps.Glib_jll]]
 deps = ["Artifacts", "Gettext_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Libiconv_jll", "Libmount_jll", "PCRE2_jll", "Pkg", "Zlib_jll"]
-git-tree-sha1 = "fb83fbe02fe57f2c068013aa94bcdf6760d3a7a7"
+git-tree-sha1 = "d3b3624125c1474292d0d8ed0f65554ac37ddb23"
 uuid = "7746bdde-850d-59dc-9ae8-88ece973131d"
-version = "2.74.0+1"
+version = "2.74.0+2"
 
 [[deps.Graphite2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1124,10 +1142,12 @@ version = "1.0.0"
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
 uuid = "b27032c2-a3e7-50c8-80cd-2d36dbcbfd21"
+version = "0.6.3"
 
 [[deps.LibCURL_jll]]
 deps = ["Artifacts", "LibSSH2_jll", "Libdl", "MbedTLS_jll", "Zlib_jll", "nghttp2_jll"]
 uuid = "deac9b47-8bc7-5906-a0fe-35ac56dc84c0"
+version = "7.84.0+0"
 
 [[deps.LibGit2]]
 deps = ["Base64", "NetworkOptions", "Printf", "SHA"]
@@ -1136,6 +1156,7 @@ uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
 [[deps.LibSSH2_jll]]
 deps = ["Artifacts", "Libdl", "MbedTLS_jll"]
 uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
+version = "1.10.2+0"
 
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -1166,9 +1187,9 @@ version = "1.42.0+0"
 
 [[deps.Libiconv_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
-git-tree-sha1 = "42b62845d70a619f063a7da093d995ec8e15e778"
+git-tree-sha1 = "c7cb1f5d892775ba13767a87c7ada0b980ea0a71"
 uuid = "94ce4f54-9a6c-5748-9c1c-f9c7231a4531"
-version = "1.16.1+1"
+version = "1.16.1+2"
 
 [[deps.Libmount_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1243,6 +1264,7 @@ version = "1.1.6"
 [[deps.MbedTLS_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "c8ffd9c3-330d-5841-b78e-0817d7145fa1"
+version = "2.28.0+0"
 
 [[deps.Measures]]
 git-tree-sha1 = "e498ddeee6f9fdb4551ce855a46f54dbd900245f"
@@ -1260,6 +1282,7 @@ uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
+version = "2022.2.1"
 
 [[deps.MuladdMacro]]
 git-tree-sha1 = "c6190f9a7fc5d9d5915ab29f2134421b12d24a68"
@@ -1286,6 +1309,7 @@ version = "1.0.1"
 
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
+version = "1.2.0"
 
 [[deps.NonlinearSolve]]
 deps = ["ArrayInterfaceCore", "FiniteDiff", "ForwardDiff", "IterativeSolvers", "LinearAlgebra", "RecursiveArrayTools", "RecursiveFactorization", "Reexport", "SciMLBase", "Setfield", "StaticArrays", "UnPack"]
@@ -1308,10 +1332,12 @@ version = "1.3.5+1"
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
+version = "0.3.20+0"
 
 [[deps.OpenLibm_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "05823500-19ac-5b8b-9628-191a04bc5112"
+version = "0.8.1+0"
 
 [[deps.OpenSSL_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1351,6 +1377,7 @@ version = "6.28.0"
 [[deps.PCRE2_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "efcefdf7-47ab-520b-bdef-62a2eaa19f15"
+version = "10.40.0+0"
 
 [[deps.PDMats]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
@@ -1384,6 +1411,7 @@ version = "0.40.1+0"
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+version = "1.8.0"
 
 [[deps.PlotThemes]]
 deps = ["PlotUtils", "Statistics"]
@@ -1451,9 +1479,9 @@ uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [[deps.Qt5Base_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Fontconfig_jll", "Glib_jll", "JLLWrappers", "Libdl", "Libglvnd_jll", "OpenSSL_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libxcb_jll", "Xorg_xcb_util_image_jll", "Xorg_xcb_util_keysyms_jll", "Xorg_xcb_util_renderutil_jll", "Xorg_xcb_util_wm_jll", "Zlib_jll", "xkbcommon_jll"]
-git-tree-sha1 = "c6c0f690d0cc7caddb74cef7aa847b824a16b256"
+git-tree-sha1 = "0c03844e2231e12fda4d0086fd7cbe4098ee8dc5"
 uuid = "ea2cea3b-5b76-57ae-a6ef-0a8af62496e1"
-version = "5.15.3+1"
+version = "5.15.3+2"
 
 [[deps.QuadGK]]
 deps = ["DataStructures", "LinearAlgebra"]
@@ -1542,6 +1570,7 @@ version = "0.3.0+0"
 
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
+version = "0.7.0"
 
 [[deps.SIMDDualNumbers]]
 deps = ["ForwardDiff", "IfElse", "SLEEFPirates", "VectorizationBase"]
@@ -1691,6 +1720,7 @@ uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 [[deps.SuiteSparse_jll]]
 deps = ["Artifacts", "Libdl", "Pkg", "libblastrampoline_jll"]
 uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
+version = "5.10.1+0"
 
 [[deps.Sundials]]
 deps = ["CEnum", "DataStructures", "DiffEqBase", "Libdl", "LinearAlgebra", "Logging", "Reexport", "SnoopPrecompile", "SparseArrays", "Sundials_jll"]
@@ -1707,6 +1737,7 @@ version = "5.2.1+0"
 [[deps.TOML]]
 deps = ["Dates"]
 uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+version = "1.0.0"
 
 [[deps.TableTraits]]
 deps = ["IteratorInterfaceExtensions"]
@@ -1723,6 +1754,7 @@ version = "1.9.0"
 [[deps.Tar]]
 deps = ["ArgTools", "SHA"]
 uuid = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
+version = "1.10.1"
 
 [[deps.TensorCore]]
 deps = ["LinearAlgebra"]
@@ -1950,6 +1982,7 @@ version = "1.4.0+3"
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
+version = "1.2.12+3"
 
 [[deps.Zstd_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1984,6 +2017,7 @@ version = "0.15.1+0"
 [[deps.libblastrampoline_jll]]
 deps = ["Artifacts", "Libdl", "OpenBLAS_jll"]
 uuid = "8e850b90-86db-534c-a0d3-1478176c7d93"
+version = "5.1.1+0"
 
 [[deps.libfdk_aac_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2006,10 +2040,12 @@ version = "1.3.7+1"
 [[deps.nghttp2_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "8e850ede-7688-5339-a07c-302acd2aaf8d"
+version = "1.48.0+0"
 
 [[deps.p7zip_jll]]
 deps = ["Artifacts", "Libdl"]
 uuid = "3f19e933-33d8-53b3-aaab-bd5110c3b7a0"
+version = "17.4.0+0"
 
 [[deps.x264_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -2054,6 +2090,7 @@ version = "1.4.1+0"
 # ╟─e5206a1f-19a8-4620-a397-c2a98ffda1ca
 # ╟─856d5262-4d9c-4d2f-a569-45acf3c91dc9
 # ╠═f2fff510-5ee5-4dac-9a38-5c46be004af3
+# ╠═2ceaa183-dce5-46ff-80c5-c3764d436f66
 # ╟─659232dd-bd5c-4f8c-a6ca-7b34de34c7ed
 # ╟─2514d3c4-9d8f-4b0e-893b-f9868df3448f
 # ╠═0f804239-f65b-44e9-a092-2c276569e0ca
@@ -2061,15 +2098,13 @@ version = "1.4.1+0"
 # ╟─0a8b2472-94ac-44da-b8ce-968e127e788a
 # ╟─e8c56921-76d6-4698-9f36-8d981aa0d79a
 # ╠═71cb9bb4-fcae-4937-8de7-a7b013a9bcfe
-# ╠═5af41093-ed73-406f-9ab7-a8b6213c0e0a
 # ╠═f46503c2-5eef-4292-8078-3e546e7e22d3
-# ╠═b369f574-b4ae-4799-8a85-011b9f40c5ff
+# ╠═92cc38ea-a92b-47fd-b85e-012f3e54509b
 # ╟─ae5afcc5-ac2b-43de-8af9-4319a897d3ec
 # ╠═85665992-b71f-451b-b56e-5fb8562fa9e4
 # ╠═09f5c38f-bc7a-4e75-b06e-1c50af9024aa
 # ╠═e9ae287d-33df-4b9c-bbf7-cc4e34f31a08
 # ╠═87aa9288-8c20-4e54-94db-fb0ed0707344
-# ╠═6cd56eaa-8bc5-44d3-be1f-3a490b3b775c
 # ╟─55a5a1d8-e764-4fbc-a1b7-650dc0534a78
 # ╠═3ff9a5a1-bc9e-4366-b8e1-c5483452ae30
 # ╠═578d82ba-bba4-4d5b-b79c-ce43318f389f
@@ -2080,5 +2115,9 @@ version = "1.4.1+0"
 # ╠═b9317c7e-2d53-4c81-aafe-69fa85e78132
 # ╠═fc113675-b6e1-4e64-a533-3ea04e82fef3
 # ╠═61adbd0f-a872-4286-aa99-d92a1f39a33d
+# ╠═b3a90d99-64ed-4e0c-93d0-a1f0dfa23d0d
+# ╠═f6d53434-c099-4292-a9ea-84178edcc214
+# ╠═a1efe350-a5c9-46b7-9e2d-73b5b1972eb5
+# ╠═c3db6bd6-603e-4af0-8fda-5a53ffd79aab
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
