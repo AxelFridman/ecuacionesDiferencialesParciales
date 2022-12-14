@@ -257,10 +257,16 @@ $u_{0,j}=u_{2,j},\quad u_{n+1,j} = u_{n-1,j},\quad u_{i,0}=u_{i,2},\quad u_{i,n+
 
 # ╔═╡ 0f804239-f65b-44e9-a092-2c276569e0ca
 function resolverSistema(xspan, tspan, alphau, alphav, u0Mat, v0Mat, F, G)
-	matricesADI = generarMatricesImplicitaExplicita(alphau, xspan, tspan)
+	matricesADIu = generarMatricesImplicitaExplicita(alphau, xspan, tspan)
 	#OJO ACA ESTOY TOMANDO DE COEFICIENTE DE DIFUSIVIDAD A ALPHAU solamente
-	AI = matricesADI[1]
-	AE = matricesADI[2]
+	AIu = matricesADIu[1]
+	AEu = matricesADIu[2]
+	
+	matricesADIv = generarMatricesImplicitaExplicita(alphav, xspan, tspan)
+	#OJO ACA ESTOY TOMANDO DE COEFICIENTE DE DIFUSIVIDAD A ALPHAV solamente
+	AIv = matricesADIv[1]
+	AEv = matricesADIv[2]
+	
 	h = xspan[2]-xspan[1]
 	deltaT = tspan[2]-tspan[1]
 	u = u0Mat
@@ -280,10 +286,10 @@ function resolverSistema(xspan, tspan, alphau, alphav, u0Mat, v0Mat, F, G)
 		#println(size((u[2:end-1, 2:end-1] * transpose(AE) )))
 		#print("Coso de la derecha derecha ")
 		#println(size(deltaT/2 .* F(u,v)[2:end-1, 2:end-1]))"
-		uAsterisco = AI \ (u * transpose(AE) + deltaT/2 .* F(u,v))
-		vAsterisco = AI \ (v * transpose(AE) + deltaT/2 .* G(u,v))
-		u = (AE * uAsterisco + deltaT/2 * F(uAsterisco,vAsterisco)) / transpose(AI) #OJO CON ESE TRANSPOSEN DE AI QUE CREO QUE HAY QUE MULTIPLICAR POR INVERSA.
-		v = (AE * vAsterisco + deltaT/2 * G(uAsterisco,vAsterisco)) / transpose(AI)
+		uAsterisco = AIu \ (u * transpose(AEu) + deltaT/2 .* F(u,v))
+		vAsterisco = AIv \ (v * transpose(AEv) + deltaT/2 .* G(u,v))
+		u = (AEu * uAsterisco + deltaT/2 * F(uAsterisco,vAsterisco)) / transpose(AIu) #OJO CON ESE TRANSPOSEN DE AI QUE CREO QUE HAY QUE MULTIPLICAR POR INVERSA.
+		v = (AEv * vAsterisco + deltaT/2 * G(uAsterisco,vAsterisco)) / transpose(AIv)
 
 		push!(us, u)
 		push!(vs, v)
@@ -293,12 +299,12 @@ end
 
 # ╔═╡ db1e672b-6246-4739-939d-ed990aa22385
 begin
-xsp = 0:0.1:1
-tsp = 0:0.1:100
-alphaU = 1
-alphaV = 1
+xsp = 0:0.01:1
+tsp = 0:0.01:1
+alphaU = 0.01
+alphaV = 0.01
 
-
+# Ejemplo particular de test
 F(u,v) = u/5 - v/10
 G(u,v) = (u + v)/2
 	
@@ -358,11 +364,8 @@ end
 begin
 	res = resolverSistema(xsp, tsp, alphaU, alphaV, u0Mat/10, v0Mat, F, G)
 	us = res[1]
-	graficarHeatMap(us, 10)
+	g = graficarHeatMap(us, 1)
 end
-
-# ╔═╡ 41151706-3252-4dfa-9807-07886d176cc8
-us
 
 # ╔═╡ ae5afcc5-ac2b-43de-8af9-4319a897d3ec
 md"""###### Ejercicio 5:
@@ -384,7 +387,7 @@ begin
 	alphaUfitz = 2.8*10^-4
 	alphaVfitz = 5*10^-3
 	xspFitz = 0:0.01:1
-	tspFitz = 0:0.01:5
+	tspFitz = 0:0.01:1
 	u0Fitz = rand(Uniform(0,1), length(tspFitz),length(tspFitz))
 	v0Fitz = rand(Uniform(0,1), length(tspFitz),length(tspFitz))
 end
@@ -439,14 +442,21 @@ Usar los valores: $\gamma = 0.2$, $a=0.09$, $b=0.055$, $c=0.075$.  Jugar un poco
 
 # ╔═╡ b9317c7e-2d53-4c81-aafe-69fa85e78132
 begin
-	F6(u,v) = γ*(a- b*u + u^2 *v)
-	G6(u,v) = γ*(c- u^2 *v)
+	F6(u,v) = γ*(a .- b*u .+ u^2 * v)
+	G6(u,v) = γ*(c .- u^2 * v)
 	xsp6 = 0:0.01:1
-	tsp6 = 0:0.01:10
+	tsp6 = 0:0.01:1
 end
 
 # ╔═╡ fc113675-b6e1-4e64-a533-3ea04e82fef3
+begin
+	res6 = resolverSistema(xsp6, tsp6, alphaU6, alphaV6,
+								u0Fitz, v0Fitz, F6, G6)
+	us6 = res6[1]
+end
 
+# ╔═╡ 61adbd0f-a872-4286-aa99-d92a1f39a33d
+graficarHeatMap(us6, 1)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -2054,7 +2064,6 @@ version = "1.4.1+0"
 # ╠═5af41093-ed73-406f-9ab7-a8b6213c0e0a
 # ╠═f46503c2-5eef-4292-8078-3e546e7e22d3
 # ╠═b369f574-b4ae-4799-8a85-011b9f40c5ff
-# ╠═41151706-3252-4dfa-9807-07886d176cc8
 # ╟─ae5afcc5-ac2b-43de-8af9-4319a897d3ec
 # ╠═85665992-b71f-451b-b56e-5fb8562fa9e4
 # ╠═09f5c38f-bc7a-4e75-b06e-1c50af9024aa
@@ -2070,5 +2079,6 @@ version = "1.4.1+0"
 # ╠═32e2da19-0244-4ff3-9e3e-3cc5665bfb69
 # ╠═b9317c7e-2d53-4c81-aafe-69fa85e78132
 # ╠═fc113675-b6e1-4e64-a533-3ea04e82fef3
+# ╠═61adbd0f-a872-4286-aa99-d92a1f39a33d
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
