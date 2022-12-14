@@ -208,6 +208,35 @@ Si consideramos $u\in\mathbb{R^{n,m}}$, una matriz $D_x$ que corresponda a las d
 Para simplificar, vamos a considerar un dominio cuadrado y vamos a tomar un único paso $h$ tanto en $x$ como 4n $y$. Esto da lugar a una matriz $u$ cuadrada y por lo tanto las matrices para las derivadas respecto de $x$ y respecto de $y$ son iguales. Sólo debe tenerse en cuenta que habrá diferencias dependiendo de si se considera una derivada explícita o implícita.  """
 
 
+# ╔═╡ 856d5262-4d9c-4d2f-a569-45acf3c91dc9
+md"""
+###### Ejercicio 2: 
+Implementar una función que reciba como datos los valores de $h$, $\Delta t$ y el coeficiente de difusividad y devuelva las dos matrices (explícita e implícita) que corresponden al método ADI para el operador del calor con ese coeficiente de difusividad. Asumiendo que trabajaremos en el cuadrado $[0,1]\times[0,1]$ el tamaño de las matrices es: 
+	n = length(0:h:1)
+"""
+
+# ╔═╡ f2fff510-5ee5-4dac-9a38-5c46be004af3
+function generarMatricesImplicitaExplicita(alphaDifusividad, xsp, tsp)
+	h = xsp[2]-xsp[1]
+	deltaT = tsp[2]-tsp[1]
+	r = alphaDifusividad * deltaT / (2* h^2)
+	
+	implMedio = (2*r +1)*ones(length(tsp))
+	implAbajo = -r*ones(length(tsp)-1)
+
+	explMedio = (-2*r +1)*ones(length(tsp))
+	explAbajo = r*ones(length(tsp)-1)
+	
+	Aimpl = Tridiagonal(implAbajo ,implMedio , implAbajo )
+	Aexpl = Tridiagonal(explAbajo ,explMedio , explAbajo )
+
+	return(Aimpl, Aexpl)
+end
+
+# ╔═╡ 659232dd-bd5c-4f8c-a6ca-7b34de34c7ed
+md"""###### Ejercicio 3:
+Implementar un programa resuelva el problema de reacción difusión recibiendo como datos: los valores de $h$, $\Delta t$, $\alpha_u$ y $\alpha_v$, las matrices iniciales $u^0$ y $v^0$ y las funciones $F$ y $G$. """
+
 # ╔═╡ 2514d3c4-9d8f-4b0e-893b-f9868df3448f
 md"""
 ###### Ejercicio 1: 
@@ -226,35 +255,6 @@ $u_{0,j}=u_{2,j},\quad u_{n+1,j} = u_{n-1,j},\quad u_{i,0}=u_{i,2},\quad u_{i,n+
 
 """
 
-# ╔═╡ 856d5262-4d9c-4d2f-a569-45acf3c91dc9
-md"""
-###### Ejercicio 2: 
-Implementar una función que reciba como datos los valores de $h$, $\Delta t$ y el coeficiente de difusividad y devuelva las dos matrices (explícita e implícita) que corresponden al método ADI para el operador del calor con ese coeficiente de difusividad. Asumiendo que trabajaremos en el cuadrado $[0,1]\times[0,1]$ el tamaño de las matrices es: 
-	n = length(0:h:1)
-"""
-
-# ╔═╡ f2fff510-5ee5-4dac-9a38-5c46be004af3
-function generarMatricesImplicitaExplicita(alphaDifusividad, xsp, tsp)
-	h = xsp[2]-xsp[1]
-	deltaT = tsp[2]-tsp[1]
-	r = alphaDifusividad * deltaT / (2* h^2)
-	
-	implMedio = (2*r +1)*ones(length(tsp[2:end-1]))
-	implAbajo = -r*ones(length(tsp[2:end-1])-1)
-
-	explMedio = (-2*r +1)*ones(length(tsp[2:end-1]))
-	explAbajo = r*ones(length(tsp[2:end-1])-1)
-	
-	Aimpl = Tridiagonal(implAbajo ,implMedio , implAbajo )
-	Aexpl = Tridiagonal(explAbajo ,explMedio , explAbajo )
-
-	return(Aimpl, Aexpl)
-end
-
-# ╔═╡ 659232dd-bd5c-4f8c-a6ca-7b34de34c7ed
-md"""###### Ejercicio 3:
-Implementar un programa resuelva el problema de reacción difusión recibiendo como datos: los valores de $h$, $\Delta t$, $\alpha_u$ y $\alpha_v$, las matrices iniciales $u^0$ y $v^0$ y las funciones $F$ y $G$. """
-
 # ╔═╡ 0f804239-f65b-44e9-a092-2c276569e0ca
 function resolverSistema(xspan, tspan, alphau, alphav, u0Mat, v0Mat, F, G)
 	matricesADI = generarMatricesImplicitaExplicita(alphau, xspan, tspan)
@@ -268,10 +268,23 @@ function resolverSistema(xspan, tspan, alphau, alphav, u0Mat, v0Mat, F, G)
 	us = [u]
 	vs = [v]
 	for i in tspan
-		uAsterisco = AI[2:end-1] \ (u * transpose(AE) + deltaT/2 * F(u,v))
-		vAsterisco = AI[2:end-1] \ (v * transpose(AE) + deltaT/2 * G(u,v))
+		#print("tamanio matriz AI")
+		#println(size(AI))
+		#print("tamanio matriz U sin borde")
+		#println(size(u[2:end-1, 2:end-1]))
+		#print("tamanio matriz F(U,V) sin borde ")
+		#println(size(F(u,v)[2:end-1, 2:end-1]))
+		#print("tamanio matriz AE transpose")
+		#println(size(transpose(AE)))
+		#print("Coso de la derecha ")
+		#println(size((u[2:end-1, 2:end-1] * transpose(AE) )))
+		#print("Coso de la derecha derecha ")
+		#println(size(deltaT/2 .* F(u,v)[2:end-1, 2:end-1]))"
+		uAsterisco = AI \ (u * transpose(AE) + deltaT/2 .* F(u,v))
+		vAsterisco = AI \ (v * transpose(AE) + deltaT/2 .* G(u,v))
 		u = (AE * uAsterisco + deltaT/2 * F(uAsterisco,vAsterisco)) / transpose(AI) #OJO CON ESE TRANSPOSEN DE AI QUE CREO QUE HAY QUE MULTIPLICAR POR INVERSA.
 		v = (AE * vAsterisco + deltaT/2 * G(uAsterisco,vAsterisco)) / transpose(AI)
+
 		push!(us, u)
 		push!(vs, v)
 	end
@@ -281,7 +294,7 @@ end
 # ╔═╡ db1e672b-6246-4739-939d-ed990aa22385
 begin
 xsp = 0:0.1:1
-tsp = 0:0.1:10
+tsp = 0:0.1:100
 alphaU = 1
 alphaV = 1
 
@@ -289,7 +302,7 @@ alphaV = 1
 F(u,v) = u/5 - v/10
 G(u,v) = (u + v)/2
 	
-funIni(x,y) = sin(x)/(1/10 * y^2+ 1)
+funIni(x,y) = sin(x)/(1/10 * y^2+ 1) + sin(y+2*x) * sin(5*y)+(x-y)/50
 u0Mat = zeros(length(tsp),length(tsp))
 v0Mat = zeros(length(tsp),length(tsp))
 
@@ -301,22 +314,26 @@ v0Mat = zeros(length(tsp),length(tsp))
 	end
 end
 
-# ╔═╡ f64b8186-0435-48f7-8222-d2cdfd8220f3
-resolverSistema(xsp, tsp, alphaU, alphaV, u0Mat, v0Mat, F, G)
-
 # ╔═╡ 0a8b2472-94ac-44da-b8ce-968e127e788a
 md"""
 ###### Ejercicio 4
 Para graficar simplemente har emos una película de `heatmap`s de alguna de las dos substancias (digamos, $u$) evolucionando a lo largo del tiempo. Implementar una función que reciba la tira de soluciones `[u[k] for k in...]` y un número `K` y genere la película graficando los cuadros `1, K+1, 2K+1, ...`.
 """
 
+# ╔═╡ e8c56921-76d6-4698-9f36-8d981aa0d79a
+md"""
+Nuestros valores iniciales matriz de u: Ejemplo armado a mano
+"""
+
 # ╔═╡ 71cb9bb4-fcae-4937-8de7-a7b013a9bcfe
 begin
-	plot(heatmap(u0Mat, clim=(minimum(0),maximum(u0Mat))))
+	plot(heatmap(u0Mat, clim=(minimum(u0Mat),maximum(u0Mat))))
 end
 
 # ╔═╡ 5af41093-ed73-406f-9ab7-a8b6213c0e0a
-begin
+# ╠═╡ disabled = true
+#=╠═╡
+begin #PARA TESTEAR
 uss = []
 u = u0Mat
 	for i in 1:1000
@@ -324,6 +341,7 @@ u = u0Mat
 		push!(uss,u)
 	end
 end
+  ╠═╡ =#
 
 # ╔═╡ f46503c2-5eef-4292-8078-3e546e7e22d3
 function graficarHeatMap(us, K)
@@ -336,8 +354,15 @@ function graficarHeatMap(us, K)
 	return anim
 end
 
-# ╔═╡ 00c96c68-05b2-4967-9817-17d76659bab4
-graficarHeatMap(uss, 10)
+# ╔═╡ b369f574-b4ae-4799-8a85-011b9f40c5ff
+begin
+	res = resolverSistema(xsp, tsp, alphaU, alphaV, u0Mat/10, v0Mat, F, G)
+	us = res[1]
+	graficarHeatMap(us, 10)
+end
+
+# ╔═╡ 41151706-3252-4dfa-9807-07886d176cc8
+us
 
 # ╔═╡ ae5afcc5-ac2b-43de-8af9-4319a897d3ec
 md"""###### Ejercicio 5:
@@ -354,15 +379,32 @@ Resolver también para $k=-0.005$ y comparar la estructura de los patrones. ¿Se
 # ╔═╡ 85665992-b71f-451b-b56e-5fb8562fa9e4
 begin
 	K = -0.05
-	Ffitz(u,v) = u - u^3 - v + K
-	Gfitz(u,v) = u - v
+	Ffitz(u,v) = u .- (u^3) .- v .+ K
+	Gfitz(u,v) = u .- v
 	alphaUfitz = 2.8*10^-4
 	alphaVfitz = 5*10^-3
 	xspFitz = 0:0.01:1
-	tspFitz = 0:0.01:10
-	u0Fitz = rand(Uniform(0,1), length(xspFitz),length(xspFitz))
-	v0Fitz = rand(Uniform(0,1), length(xspFitz),length(xspFitz))
+	tspFitz = 0:0.01:5
+	u0Fitz = rand(Uniform(0,1), length(tspFitz),length(tspFitz))
+	v0Fitz = rand(Uniform(0,1), length(tspFitz),length(tspFitz))
 end
+
+# ╔═╡ 09f5c38f-bc7a-4e75-b06e-1c50af9024aa
+plot(heatmap(u0Fitz, clim=(minimum(u0Fitz),maximum(u0Fitz))))
+
+# ╔═╡ e9ae287d-33df-4b9c-bbf7-cc4e34f31a08
+# ╠═╡ show_logs = false
+begin
+	resFitz = resolverSistema(xspFitz, tspFitz, alphaUfitz, alphaVfitz,
+								u0Fitz, v0Fitz, Ffitz, Gfitz)
+	usFitz = resFitz[1]
+end
+
+# ╔═╡ 87aa9288-8c20-4e54-94db-fb0ed0707344
+graficarHeatMap(usFitz, 100)
+
+# ╔═╡ 6cd56eaa-8bc5-44d3-be1f-3a490b3b775c
+
 
 # ╔═╡ 55a5a1d8-e764-4fbc-a1b7-650dc0534a78
 md"""
@@ -2000,20 +2042,25 @@ version = "1.4.1+0"
 # ╟─95cd8234-09b7-422c-82a2-371e994d4d93
 # ╟─17dc1e39-4174-4cf7-b035-6aebbe9de376
 # ╟─e5206a1f-19a8-4620-a397-c2a98ffda1ca
-# ╟─2514d3c4-9d8f-4b0e-893b-f9868df3448f
 # ╟─856d5262-4d9c-4d2f-a569-45acf3c91dc9
 # ╠═f2fff510-5ee5-4dac-9a38-5c46be004af3
 # ╟─659232dd-bd5c-4f8c-a6ca-7b34de34c7ed
+# ╟─2514d3c4-9d8f-4b0e-893b-f9868df3448f
 # ╠═0f804239-f65b-44e9-a092-2c276569e0ca
 # ╠═db1e672b-6246-4739-939d-ed990aa22385
-# ╠═f64b8186-0435-48f7-8222-d2cdfd8220f3
 # ╟─0a8b2472-94ac-44da-b8ce-968e127e788a
+# ╟─e8c56921-76d6-4698-9f36-8d981aa0d79a
 # ╠═71cb9bb4-fcae-4937-8de7-a7b013a9bcfe
 # ╠═5af41093-ed73-406f-9ab7-a8b6213c0e0a
 # ╠═f46503c2-5eef-4292-8078-3e546e7e22d3
-# ╠═00c96c68-05b2-4967-9817-17d76659bab4
+# ╠═b369f574-b4ae-4799-8a85-011b9f40c5ff
+# ╠═41151706-3252-4dfa-9807-07886d176cc8
 # ╟─ae5afcc5-ac2b-43de-8af9-4319a897d3ec
 # ╠═85665992-b71f-451b-b56e-5fb8562fa9e4
+# ╠═09f5c38f-bc7a-4e75-b06e-1c50af9024aa
+# ╠═e9ae287d-33df-4b9c-bbf7-cc4e34f31a08
+# ╠═87aa9288-8c20-4e54-94db-fb0ed0707344
+# ╠═6cd56eaa-8bc5-44d3-be1f-3a490b3b775c
 # ╟─55a5a1d8-e764-4fbc-a1b7-650dc0534a78
 # ╠═3ff9a5a1-bc9e-4366-b8e1-c5483452ae30
 # ╠═578d82ba-bba4-4d5b-b79c-ce43318f389f
